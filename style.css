@@ -248,20 +248,24 @@ input {
   text-align: center;
 }
 
-/* Printing */
+/* Printing - 80mm Thermal Receipt Printer */
 @media print {
   @page {
     size: 80mm auto;
-    margin: 4mm;
+    margin: 0;
   }
 
+  html,
   body {
+    width: 80mm;
+    margin: 0;
+    padding: 0;
     background: white;
     color: black;
   }
 
   .app {
-    width: 100%;
+    width: 80mm;
     max-width: none;
     margin: 0;
     padding: 0;
@@ -276,12 +280,14 @@ input {
 
   .receipt-card {
     display: block !important;
-    width: 100%;
+    width: 80mm;
+    max-width: none;
     margin: 0;
-    padding: 0;
+    padding: 3mm;
     border: none;
     border-radius: 0;
     box-shadow: none;
+    background: white;
   }
 
   .receipt {
@@ -290,21 +296,65 @@ input {
     margin: 0;
     padding: 0;
     font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .receipt-header {
+    margin-bottom: 4mm;
   }
 
   .receipt-header h2 {
     font-size: 16px;
   }
 
-  .receipt-divider {
-    border-color: #555;
+  .receipt-header p,
+  .receipt-footer p {
+    font-size: 10px;
   }
 
-  .receipt-row,
-  .total-row {
+  .receipt-divider {
+    margin: 3mm 0;
+    border-top: 1px dashed black;
+  }
+
+  .receipt-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 3mm;
+    margin: 3mm 0;
     break-inside: avoid;
   }
+
+  .receipt-row span {
+    flex-shrink: 0;
+  }
+
+  .receipt-row strong {
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  .total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 3mm;
+    font-size: 15px;
+    font-weight: bold;
+    break-inside: avoid;
+  }
+
+  .total-row strong {
+    text-align: right;
+  }
+
+  .receipt-footer {
+    margin-top: 5mm;
+    text-align: center;
+  }
 }
+
 
 @media (max-width: 420px) {
   .app {

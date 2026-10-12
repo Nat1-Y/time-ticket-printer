@@ -2,9 +2,12 @@
 const parkingForm = document.getElementById("parkingForm");
 const formSection = document.getElementById("formSection");
 const receiptSection = document.getElementById("receiptSection");
+const customerNameInput = document.getElementById("customerName");
+const feeInput = document.getElementById("fee");
 
 const printButton = document.getElementById("printButton");
 const newReceiptButton = document.getElementById("newReceiptButton");
+const backButton = document.getElementById("backButton");
 
 function formatTime(timeValue) {
   const [hours, minutes] = timeValue.split(":");
@@ -27,6 +30,26 @@ function formatFee(amount) {
   );
 }
 
+function parseFeeInput(value) {
+  const normalizedValue = value.trim();
+
+  if (!/^\d+(\.\d{1,2})?$/.test(normalizedValue)) {
+    return null;
+  }
+
+  const amount = Number(normalizedValue);
+
+  if (!Number.isFinite(amount) || amount < 0) {
+    return null;
+  }
+
+  return amount;
+}
+
+function isValidCustomerName(value) {
+  return /^[A-Za-z][A-Za-z\s.'-]*$/.test(value.trim());
+}
+
 function generateReceiptNumber() {
   const now = new Date();
   const datePart = [
@@ -40,6 +63,27 @@ function generateReceiptNumber() {
   return `PK-${datePart}-${randomPart}`;
 }
 
+customerNameInput.addEventListener("input", function () {
+  this.value = this.value.replace(/[^A-Za-z\s.'-]/g, "");
+});
+
+feeInput.addEventListener("input", function () {
+  const rawValue = this.value.replace(/[^0-9.]/g, "");
+  const parts = rawValue.split(".");
+
+  if (parts.length > 2) {
+    this.value = `${parts[0]}.${parts.slice(1).join("")}`;
+    return;
+  }
+
+  if (parts.length === 2) {
+    this.value = `${parts[0]}.${parts[1].slice(0, 2)}`;
+    return;
+  }
+
+  this.value = rawValue;
+});
+
 parkingForm.addEventListener("submit", function (event) {
   event.preventDefault();
 
@@ -49,15 +93,21 @@ parkingForm.addEventListener("submit", function (event) {
 
   const inTime = document.getElementById("inTime").value;
   const outTime = document.getElementById("outTime").value;
-  const fee = document.getElementById("fee").value;
+  const feeInput = document.getElementById("fee").value;
+  const fee = parseFeeInput(feeInput);
 
-  if (!customerName || !inTime || !outTime || fee === "") {
+  if (!customerName || !inTime || !outTime || feeInput === "") {
     alert("Please fill in all the required fields.");
     return;
   }
 
-  if (!Number.isFinite(Number(fee)) || Number(fee) < 0) {
-    alert("Please enter a valid parking fee.");
+  if (!isValidCustomerName(customerName)) {
+    alert("Customer name should contain letters only, without numbers.");
+    return;
+  }
+
+  if (fee === null) {
+    alert("Please enter a valid parking fee, like 089 or 89.00.");
     return;
   }
 
@@ -96,6 +146,18 @@ parkingForm.addEventListener("submit", function (event) {
 
 printButton.addEventListener("click", function () {
   window.print();
+});
+
+backButton.addEventListener("click", function () {
+  receiptSection.classList.add("hidden");
+  formSection.classList.remove("hidden");
+
+  document.getElementById("customerName").focus();
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth",
+  });
 });
 
 newReceiptButton.addEventListener("click", function () {
