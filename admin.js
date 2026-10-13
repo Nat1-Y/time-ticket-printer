@@ -1,4 +1,5 @@
-const PRINT_AGENT_URL = "http://127.0.0.1:9123";
+const PRINT_AGENT_URL = "http://localhost:9123";
+const PRINT_SERVICE_DOWNLOAD = "downloads/ParkingPrintService.zip";
 const TOKEN_KEY = "parkingAdminToken";
 
 const loginSection = document.getElementById("loginSection");
@@ -45,7 +46,8 @@ async function api(path, { method = "GET", body } = {}) {
     });
   } catch {
     throw new Error(
-      "Cannot reach the print service on this computer. Run \"Install Print Service.bat\" " +
+      "Cannot reach the print service on this computer. Install it from " +
+      `${new URL(PRINT_SERVICE_DOWNLOAD, location.href)} (run Setup.bat) ` +
       "and allow local network access if the browser asks.",
     );
   }

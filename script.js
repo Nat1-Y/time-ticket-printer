@@ -14,7 +14,8 @@ const IS_TAURI = typeof window.__TAURI__ !== "undefined" ||
                  typeof window.__TAURI_INTERNALS__ !== "undefined";
 
 // ─── Local print service (print-agent on the POS PC) ─────────────────────────
-const PRINT_AGENT_URL = "http://127.0.0.1:9123";
+const PRINT_AGENT_URL = "http://localhost:9123";
+const PRINT_SERVICE_DOWNLOAD = "downloads/ParkingPrintService.zip";
 
 let currentReceipt = null;
 
@@ -289,11 +290,16 @@ async function printWithAgent() {
     printButton.textContent = "Print Receipt";
 
     if (err.name === "AbortError" || err instanceof TypeError) {
-      alert(
-        "The print service on this computer is not running or the browser blocked it.\n\n" +
-        "1. Run \"Install Print Service.bat\" on this PC.\n" +
-        "2. If the browser asks to access devices on your local network, click Allow.",
+      const download = confirm(
+        "The print service is not installed or not running on this computer " +
+        "(or the browser blocked it).\n\n" +
+        "Press OK to download the installer, then:\n" +
+        "1. Extract the zip and run Setup.bat\n" +
+        "2. Choose this PC's receipt printer\n" +
+        "3. Press Print Receipt again (click Allow if the browser asks " +
+        "to access devices on your local network).",
       );
+      if (download) window.location.href = PRINT_SERVICE_DOWNLOAD;
     } else {
       alert("Printing failed: " + err.message);
     }

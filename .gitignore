@@ -1,3 +1,4 @@
-print-agent/config.json
-print-agent/data/
-print-agent/service.log
+print-service/config.json
+print-service/data/
+print-service/service.log
+print-agent/

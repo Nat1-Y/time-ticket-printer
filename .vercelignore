@@ -3,4 +3,5 @@ node_modules
 *.bat
 package.json
 package-lock.json
+print-service
 print-agent
