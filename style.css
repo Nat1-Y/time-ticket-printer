@@ -248,16 +248,17 @@ input {
   text-align: center;
 }
 
-/* Printing - 80mm Thermal Receipt Printer */
+/* Printing - 58mm Thermal Receipt Printer (XP-58) */
 @media print {
   @page {
-    size: 80mm auto;
+    size: 58mm auto;
     margin: 0;
   }
 
   html,
   body {
-    width: 80mm;
+    width: 100%;
+    max-width: 58mm;
     margin: 0;
     padding: 0;
     background: white;
@@ -265,8 +266,8 @@ input {
   }
 
   .app {
-    width: 80mm;
-    max-width: none;
+    width: 100%;
+    max-width: 58mm;
     margin: 0;
     padding: 0;
   }
@@ -280,10 +281,10 @@ input {
 
   .receipt-card {
     display: block !important;
-    width: 80mm;
-    max-width: none;
+    width: 100%;
+    max-width: 58mm;
     margin: 0;
-    padding: 3mm;
+    padding: 2mm 1mm;
     border: none;
     border-radius: 0;
     box-shadow: none;

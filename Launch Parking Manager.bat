@@ -1,2 +1,6 @@
 @echo off
-start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing --app="file:///D:/Hosting%%20files/time-ticket-printer/index.html"
+title Parking Manager POS
+echo Setting default thermal printer to XP-58 (copy 1)...
+rundll32 printui.dll,PrintUIEntry /y /n "XP-58 (copy 1)"
+echo Launching Parking Manager in silent direct-print mode...
+start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing --app="https://time-ticket-printer-src-tauri.vercel.app"
