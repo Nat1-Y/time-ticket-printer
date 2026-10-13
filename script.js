@@ -13,6 +13,32 @@ const backButton = document.getElementById("backButton");
 const IS_TAURI = typeof window.__TAURI__ !== "undefined" ||
                  typeof window.__TAURI_INTERNALS__ !== "undefined";
 
+// ─── Local print service (print-agent on the POS PC) ─────────────────────────
+const PRINT_AGENT_URL = "http://127.0.0.1:9123";
+
+let currentReceipt = null;
+
+async function callPrintAgent(path, body, timeoutMs = 4000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(PRINT_AGENT_URL + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || `Print service error (${response.status})`);
+    }
+    return result;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatTime(timeValue) {
@@ -123,27 +149,31 @@ parkingForm.addEventListener("submit", function (event) {
 
   const now = new Date();
 
-  document.getElementById("receiptNumber").textContent =
-    generateReceiptNumber();
-
-  document.getElementById("receiptDate").textContent =
-    now.toLocaleDateString("en-GB", {
+  currentReceipt = {
+    receiptNo: generateReceiptNumber(),
+    date: now.toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "short",
       year: "numeric",
-    });
+    }),
+    customer: customerName,
+    inTime: formatTime(inTime),
+    outTime: formatTime(outTime),
+    fee,
+    feeText: formatFee(fee),
+  };
 
-  document.getElementById("receiptCustomer").textContent =
-    customerName;
+  document.getElementById("receiptNumber").textContent = currentReceipt.receiptNo;
+  document.getElementById("receiptDate").textContent = currentReceipt.date;
+  document.getElementById("receiptCustomer").textContent = currentReceipt.customer;
+  document.getElementById("receiptInTime").textContent = currentReceipt.inTime;
+  document.getElementById("receiptOutTime").textContent = currentReceipt.outTime;
+  document.getElementById("receiptFee").textContent = currentReceipt.feeText;
 
-  document.getElementById("receiptInTime").textContent =
-    formatTime(inTime);
-
-  document.getElementById("receiptOutTime").textContent =
-    formatTime(outTime);
-
-  document.getElementById("receiptFee").textContent =
-    formatFee(fee);
+  // Save the receipt on the POS PC (best effort; printing saves it again)
+  callPrintAgent("/api/receipts", currentReceipt).catch((err) =>
+    console.warn("Could not save receipt:", err),
+  );
 
   formSection.classList.add("hidden");
   receiptSection.classList.remove("hidden");
@@ -244,13 +274,41 @@ async function printWithTauriPlugin() {
 
 // ─── Print button ─────────────────────────────────────────────────────────────
 
+async function printWithAgent() {
+  printButton.disabled = true;
+  printButton.textContent = "Printing…";
+
+  try {
+    await callPrintAgent("/print", currentReceipt, 60000);
+    printButton.textContent = "Printed ✓";
+    setTimeout(() => {
+      printButton.textContent = "Print Receipt";
+    }, 2000);
+  } catch (err) {
+    console.error("Print service error:", err);
+    printButton.textContent = "Print Receipt";
+
+    if (err.name === "AbortError" || err instanceof TypeError) {
+      alert(
+        "The print service on this computer is not running or the browser blocked it.\n\n" +
+        "1. Run \"Install Print Service.bat\" on this PC.\n" +
+        "2. If the browser asks to access devices on your local network, click Allow.",
+      );
+    } else {
+      alert("Printing failed: " + err.message);
+    }
+  } finally {
+    printButton.disabled = false;
+  }
+}
+
 printButton.addEventListener("click", function () {
   if (IS_TAURI) {
-    // Production: use thermal printer plugin directly — no dialog
+    // Desktop app: use thermal printer plugin directly — no dialog
     printWithTauriPlugin();
   } else {
-    // Development (plain browser): fall back to browser print dialog
-    window.print();
+    // Browser: send to the local print service — prints silently, no dialog
+    printWithAgent();
   }
 });
 

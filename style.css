@@ -371,3 +371,7 @@ input {
     gap: 10px;
   }
 }
+
+.admin-link {
+  color: var(--muted);
+}
