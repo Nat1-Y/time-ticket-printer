@@ -2,7 +2,7 @@
 title Parking Manager POS
 
 set "APP_URL=https://time-ticket-printer-src-tauri.vercel.app"
-set "PRINTER=XP-58 (copy 1)"
+set "PRINTER=HP LaserJet 400 M401 PCL 6"
 rem Dedicated browser profile: guarantees --kiosk-printing is applied even if
 rem Chrome/Edge is already open, and avoids a remembered "last used" printer.
 set "PROFILE_DIR=%LOCALAPPDATA%\ParkingManagerKiosk"
