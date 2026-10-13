@@ -1,0 +1,4 @@
+*.bat text eol=crlf
+*.vbs text eol=crlf
+print-service/README.txt text eol=crlf
+*.zip binary
