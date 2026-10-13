@@ -1,0 +1,17 @@
+{
+  "name": "parking-manager",
+  "version": "0.1.0",
+  "description": "Parking Manager - Thermal Receipt Printer",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "dependencies": {
+    "tauri-plugin-thermal-printer": "^2.0.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
