@@ -308,11 +308,11 @@ function New-ReceiptBitmap($r, [int]$widthDots) {
 
   $y = [single](6 * $s)
 
-  # Round "P" logo
+  # Round "W" logo
   $d = [single](62 * $s)
   $lx = [single](($widthDots - $d) / 2)
   $g.FillEllipse($black, $lx, $y, $d, $d)
-  $g.DrawString("P", $fontLogo, $white, (New-Object System.Drawing.RectangleF($lx, $y, $d, $d)), $center)
+  $g.DrawString("W", $fontLogo, $white, (New-Object System.Drawing.RectangleF($lx, $y, $d, $d)), $center)
   $y += $d + 12 * $s
 
   $layout = New-Object System.Drawing.SizeF([single]$w, [single]1000)
@@ -341,7 +341,7 @@ function New-ReceiptBitmap($r, [int]$widthDots) {
   }
 
   $rowGap = 12 * $s
-  $y = & $centered "PARKING RECEIPT" $fontTitle (8 * $s)
+  $y = & $centered "WASTINA COMMERCIAL CENTER" $fontTitle (8 * $s)
   $y = & $centered "Thank you for parking with us!" $fontSmall 0
   $y = & $divider
   $y = & $row "Receipt No." $r.receiptNo $fontLabel $fontValue $rowGap
@@ -453,7 +453,7 @@ function Invoke-WindowsPrint($receipt, [string]$printerName, $config) {
     $logo = 10.0 * $scale
     $logoX = $x + ($w - $logo) / 2
     $g.FillEllipse($black, [single]$logoX, [single]$y, [single]$logo, [single]$logo)
-    $g.DrawString("P", $fontLogo, $white, (New-Object System.Drawing.RectangleF([single]$logoX, [single]$y, [single]$logo, [single]$logo)), $center)
+    $g.DrawString("W", $fontLogo, $white, (New-Object System.Drawing.RectangleF([single]$logoX, [single]$y, [single]$logo, [single]$logo)), $center)
     $y += $logo + 3
 
     $layout = New-Object System.Drawing.SizeF([single]$w, [single]1000)
@@ -484,7 +484,7 @@ function Invoke-WindowsPrint($receipt, [string]$printerName, $config) {
       return $yy + $h + 2
     }
 
-    $y = & $centered "PARKING RECEIPT" $fontTitle
+    $y = & $centered "WASTINA COMMERCIAL CENTER" $fontTitle
     $y = & $centered "Thank you for parking with us!" $fontSmall
     $y = & $divider
     $y = & $row "Receipt No." $r.receiptNo $fontLabel $fontValue

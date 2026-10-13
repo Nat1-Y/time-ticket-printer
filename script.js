@@ -228,7 +228,7 @@ async function printWithTauriPlugin() {
     // 3. Build ESC/POS sections
     const sections = [
       // Header
-      titleSection("PARKING RECEIPT", { align: "center" }),
+      titleSection("WASTINA COMMERCIAL CENTER", { align: "center" }),
       text("Thank you for parking with us!", { align: "center" }),
       line({ character: "-", length: 32 }),
 
