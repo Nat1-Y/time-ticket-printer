@@ -1,0 +1,5 @@
+src-tauri
+node_modules
+*.bat
+package.json
+package-lock.json
