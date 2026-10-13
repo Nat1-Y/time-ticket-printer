@@ -4,10 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.nyt.parking-manager",
   "build": {
-    "frontendDist": "../",
-    "devUrl": "../index.html",
-    "beforeDevCommand": "",
-    "beforeBuildCommand": ""
+    "frontendDist": "../"
   },
   "app": {
     "windows": [
