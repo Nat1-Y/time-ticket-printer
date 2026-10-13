@@ -8,7 +8,7 @@
 #   agent.ps1 -Stop    stop a running service
 #
 # Unattended setup (for installing on many PCs):
-#   agent.ps1 -Setup -Quiet -Printer "XP-58" -AdminUser admin -AdminPassword secret [-TestPrint]
+#   agent.ps1 -Setup -Quiet -Printer "XP-58" -PaperWidth 80 -AdminUser admin -AdminPassword secret [-TestPrint]
 
 param(
   [switch]$Setup,
@@ -16,6 +16,7 @@ param(
   [switch]$Quiet,
   [switch]$TestPrint,
   [string]$Printer,
+  [int]$PaperWidth,
   [string]$AdminUser,
   [string]$AdminPassword
 )
@@ -64,6 +65,9 @@ function Get-Config {
   if ($null -eq $config) { $config = New-Object PSObject }
   if ($null -eq $config.printerName)    { $config | Add-Member -Force printerName "" }
   if ($null -eq $config.receiptWidthMm) { $config | Add-Member -Force receiptWidthMm 72 }
+  if ($null -eq $config.printMode)      { $config | Add-Member -Force printMode "auto" }
+  if ($null -eq $config.paperWidthMm)   { $config | Add-Member -Force paperWidthMm 58 }
+  if ($null -eq $config.cut)            { $config | Add-Member -Force cut $true }
   if ($null -eq $config.allowedOrigins) { $config | Add-Member -Force allowedOrigins $DefaultOrigins }
   if ($null -eq $config.admin)          { $config | Add-Member -Force admin $null }
   return $config
@@ -146,11 +150,254 @@ function Test-Password([string]$password, $admin) {
 
 # --- Printing ----------------------------------------------------------------
 
+# Raw printing (ESC/POS) helpers: send bytes straight to a printer queue, and
+# turn a bitmap into ESC/POS raster data with an auto-cut at the end.
+Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
+using System;
+using System.ComponentModel;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Runtime.InteropServices;
+
+public static class RawReceiptPrinter {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public class DocInfo {
+    [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
+    [MarshalAs(UnmanagedType.LPWStr)] public string pOutputFile;
+    [MarshalAs(UnmanagedType.LPWStr)] public string pDataType;
+  }
+
+  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern bool OpenPrinter(string name, out IntPtr handle, IntPtr defaults);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool ClosePrinter(IntPtr handle);
+  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern int StartDocPrinter(IntPtr handle, int level, [In] DocInfo info);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool EndDocPrinter(IntPtr handle);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool StartPagePrinter(IntPtr handle);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool EndPagePrinter(IntPtr handle);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool WritePrinter(IntPtr handle, byte[] data, int count, out int written);
+
+  public static void Send(string printer, string docName, byte[] data) {
+    IntPtr handle;
+    if (!OpenPrinter(printer, out handle, IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error());
+    try {
+      DocInfo info = new DocInfo();
+      info.pDocName = docName;
+      info.pDataType = "RAW";
+      if (StartDocPrinter(handle, 1, info) == 0) throw new Win32Exception(Marshal.GetLastWin32Error());
+      try {
+        StartPagePrinter(handle);
+        int written;
+        if (!WritePrinter(handle, data, data.Length, out written)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        EndPagePrinter(handle);
+      } finally {
+        EndDocPrinter(handle);
+      }
+    } finally {
+      ClosePrinter(handle);
+    }
+  }
+
+  public static byte[] ToEscPos(Bitmap bmp, bool cut) {
+    int w = bmp.Width, h = bmp.Height, bytesPerRow = (w + 7) / 8;
+    BitmapData bits = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+    byte[] px = new byte[bits.Stride * h];
+    Marshal.Copy(bits.Scan0, px, 0, px.Length);
+    int stride = bits.Stride;
+    bmp.UnlockBits(bits);
+
+    MemoryStream ms = new MemoryStream();
+    ms.Write(new byte[] { 0x1B, 0x40 }, 0, 2);                       // ESC @  initialise
+    const int band = 128;                                             // keep each raster block small
+    for (int y0 = 0; y0 < h; y0 += band) {
+      int bh = Math.Min(band, h - y0);
+      ms.Write(new byte[] { 0x1D, 0x76, 0x30, 0x00,                   // GS v 0  raster image
+        (byte)(bytesPerRow & 0xFF), (byte)(bytesPerRow >> 8), (byte)(bh & 0xFF), (byte)(bh >> 8) }, 0, 8);
+      byte[] rows = new byte[bytesPerRow * bh];
+      for (int y = 0; y < bh; y++) {
+        for (int x = 0; x < w; x++) {
+          int i = (y0 + y) * stride + x * 3;
+          if (px[i] + px[i + 1] + px[i + 2] < 384) rows[y * bytesPerRow + (x >> 3)] |= (byte)(0x80 >> (x & 7));
+        }
+      }
+      ms.Write(rows, 0, rows.Length);
+    }
+    ms.Write(new byte[] { 0x1B, 0x64, 0x04 }, 0, 3);                 // ESC d 4  feed past the tear bar
+    if (cut) ms.Write(new byte[] { 0x1D, 0x56, 0x42, 0x00 }, 0, 4);  // GS V 66 0  feed to cutter and cut
+    return ms.ToArray();
+  }
+}
+"@
+
+# USB ports that currently have a printer plugged in (e.g. "USB003")
+function Get-ConnectedUsbPorts {
+  @(Get-CimInstance Win32_PnPEntity -Filter "DeviceID LIKE 'USBPRINT%'" |
+    ForEach-Object { if ($_.DeviceID -match "(USB\d+)$") { $Matches[1] } })
+}
+
+# Windows creates a new "XP-58 (copy N)" queue each time a USB printer is
+# plugged into another socket. If the chosen queue's USB port is empty, use a
+# queue with the same driver on the port where the printer is now connected.
+function Resolve-PrinterName([string]$name) {
+  if (-not $name) { return (New-Object System.Drawing.Printing.PrinterSettings).PrinterName }
+  $all = @(Get-CimInstance Win32_Printer)
+  $chosen = $all | Where-Object { $_.Name -eq $name } | Select-Object -First 1
+  if ($null -eq $chosen -or $chosen.PortName -notmatch "^USB\d+") { return $name }
+
+  $connected = Get-ConnectedUsbPorts
+  if ($connected -contains $chosen.PortName) { return $name }
+
+  $alt = $all | Where-Object { $connected -contains $_.PortName -and $_.DriverName -eq $chosen.DriverName } | Select-Object -First 1
+  if ($alt) {
+    Write-Log "Printer '$name' ($($chosen.PortName)) is not connected; using '$($alt.Name)' on $($alt.PortName)"
+    return $alt.Name
+  }
+  return $name
+}
+
+# Receipt (roll) printers report paper 80 mm wide or narrower
+function Test-ReceiptPrinter([string]$name) {
+  $settings = New-Object System.Drawing.Printing.PrinterSettings
+  $settings.PrinterName = $name
+  return $settings.IsValid -and $settings.DefaultPageSettings.PaperSize.Width -le 320
+}
+
+function Get-PrintMode([string]$name, $config) {
+  if ($config.printMode -eq "escpos" -or $config.printMode -eq "windows") { return $config.printMode }
+  if (Test-ReceiptPrinter $name) { return "escpos" }
+  return "windows"
+}
+
+# Draws the receipt like the on-screen version, black on white, at printer resolution
+function New-ReceiptBitmap($r, [int]$widthDots) {
+  $s = [Math]::Max(1.0, $widthDots / 440.0)
+  $margin = [int](8 * $s)
+  $w = $widthDots - 2 * $margin
+
+  $canvas = New-Object System.Drawing.Bitmap $widthDots, 3000
+  $g = [System.Drawing.Graphics]::FromImage($canvas)
+  $g.Clear([System.Drawing.Color]::White)
+  $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::SingleBitPerPixelGridFit
+
+  $px = [System.Drawing.GraphicsUnit]::Pixel
+  $bold = [System.Drawing.FontStyle]::Bold
+  $regular = [System.Drawing.FontStyle]::Regular
+  $fontLogo  = New-Object System.Drawing.Font("Arial", (32 * $s), $bold, $px)
+  $fontTitle = New-Object System.Drawing.Font("Arial", (30 * $s), $bold, $px)
+  $fontSmall = New-Object System.Drawing.Font("Arial", (19 * $s), $regular, $px)
+  $fontLabel = New-Object System.Drawing.Font("Arial", (22 * $s), $regular, $px)
+  $fontValue = New-Object System.Drawing.Font("Arial", (22 * $s), $bold, $px)
+  $fontTotal = New-Object System.Drawing.Font("Arial", (29 * $s), $bold, $px)
+
+  $black = [System.Drawing.Brushes]::Black
+  $white = [System.Drawing.Brushes]::White
+  $center = New-Object System.Drawing.StringFormat
+  $center.Alignment = [System.Drawing.StringAlignment]::Center
+  $center.LineAlignment = [System.Drawing.StringAlignment]::Center
+  $right = New-Object System.Drawing.StringFormat
+  $right.Alignment = [System.Drawing.StringAlignment]::Far
+  $dash = New-Object System.Drawing.Pen([System.Drawing.Color]::Black, [single](2 * $s))
+  $dash.DashPattern = [single[]](3, 2)
+
+  $y = [single](6 * $s)
+
+  # Round "P" logo
+  $d = [single](62 * $s)
+  $lx = [single](($widthDots - $d) / 2)
+  $g.FillEllipse($black, $lx, $y, $d, $d)
+  $g.DrawString("P", $fontLogo, $white, (New-Object System.Drawing.RectangleF($lx, $y, $d, $d)), $center)
+  $y += $d + 12 * $s
+
+  $layout = New-Object System.Drawing.SizeF([single]$w, [single]1000)
+  $centered = {
+    param($text, $font, $after)
+    $h = $g.MeasureString($text, $font, $layout, $center).Height
+    $g.DrawString($text, $font, $black, (New-Object System.Drawing.RectangleF([single]$margin, [single]$y, [single]$w, [single]$h)), $center)
+    return [single]($y + $h + $after)
+  }
+  $divider = {
+    $yy = [single]($y + 14 * $s)
+    $g.DrawLine($dash, [single]$margin, $yy, [single]($margin + $w), $yy)
+    return [single]($yy + 18 * $s)
+  }
+  $row = {
+    param($label, $value, $labelFont, $valueFont, $gap)
+    $value = [string]$value
+    $h = [Math]::Max($labelFont.GetHeight($g), $valueFont.GetHeight($g))
+    $lw = $g.MeasureString($label, $labelFont).Width
+    $vw = $g.MeasureString($value, $valueFont).Width
+    $g.DrawString($label, $labelFont, $black, [single]$margin, [single]$y)
+    $yy = $y
+    if ($lw + $vw + 8 -gt $w) { $yy += $h }
+    $g.DrawString($value, $valueFont, $black, (New-Object System.Drawing.RectangleF([single]$margin, [single]$yy, [single]$w, [single]$h)), $right)
+    return [single]($yy + $h + $gap)
+  }
+
+  $rowGap = 12 * $s
+  $y = & $centered "PARKING RECEIPT" $fontTitle (8 * $s)
+  $y = & $centered "Thank you for parking with us!" $fontSmall 0
+  $y = & $divider
+  $y = & $row "Receipt No." $r.receiptNo $fontLabel $fontValue $rowGap
+  $y = & $row "Date" $r.date $fontLabel $fontValue 0
+  $y = & $divider
+  $y = & $row "Customer" $r.customer $fontLabel $fontValue $rowGap
+  $y = & $row "In-Time" $r.inTime $fontLabel $fontValue $rowGap
+  $y = & $row "Out-Time" $r.outTime $fontLabel $fontValue 0
+  $y = & $divider
+  # Keep "TOTAL FEE  amount" on one line, like the screen
+  $totalSize = 29 * $s
+  while ($totalSize -gt 18 -and ($g.MeasureString("TOTAL FEE", $fontTotal).Width + $g.MeasureString([string]$r.feeText, $fontTotal).Width + 8) -gt $w) {
+    $totalSize -= 1
+    $fontTotal = New-Object System.Drawing.Font("Arial", $totalSize, $bold, $px)
+  }
+  $y = & $row "TOTAL FEE" $r.feeText $fontTotal $fontTotal 0
+  $y += 22 * $s
+  $y = & $centered "Please keep this receipt for your records." $fontSmall (6 * $s)
+  $y = & $centered "Have a safe journey!" $fontSmall 0
+  $y += 10 * $s
+  $g.Dispose()
+
+  # Crop to content
+  $height = [int][Math]::Ceiling($y)
+  $receiptBmp = $canvas.Clone((New-Object System.Drawing.Rectangle 0, 0, $widthDots, $height), [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+  $canvas.Dispose()
+  return $receiptBmp
+}
+
+function Invoke-EscPosPrint($receipt, [string]$printerName, $config) {
+  # 203 dpi print heads: 58 mm paper = 384 dots, 80 mm paper = 576 dots
+  if ([int]$config.paperWidthMm -ge 80) { $dots = 576 } else { $dots = 384 }
+  $bmp = New-ReceiptBitmap $receipt $dots
+  try {
+    $bytes = [RawReceiptPrinter]::ToEscPos($bmp, [bool]$config.cut)
+  } finally {
+    $bmp.Dispose()
+  }
+  [RawReceiptPrinter]::Send($printerName, "Parking Receipt $($receipt.receiptNo)", $bytes)
+}
+
 function Invoke-PrintReceipt($receipt, $config) {
+  $name = Resolve-PrinterName $config.printerName
+  if ((Get-PrintMode $name $config) -eq "escpos") {
+    Invoke-EscPosPrint $receipt $name $config
+    return $name
+  }
+  return Invoke-WindowsPrint $receipt $name $config
+}
+
+# Normal Windows (GDI) printing, used for office/laser printers
+function Invoke-WindowsPrint($receipt, [string]$printerName, $config) {
   $doc = New-Object System.Drawing.Printing.PrintDocument
-  if ($config.printerName) { $doc.PrinterSettings.PrinterName = $config.printerName }
+  if ($printerName) { $doc.PrinterSettings.PrinterName = $printerName }
   if (-not $doc.PrinterSettings.IsValid) {
-    throw "Printer '$($config.printerName)' was not found. Run Setup again to choose a printer."
+    throw "Printer '$printerName' was not found. Run Setup again to choose a printer."
   }
   $doc.DocumentName = "Parking Receipt $($receipt.receiptNo)"
   $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
@@ -165,7 +412,7 @@ function Invoke-PrintReceipt($receipt, $config) {
   $script:PrintJob = @{ receipt = $receipt; maxWidthMm = [double]$config.receiptWidthMm }
 
   $doc.add_PrintPage({
-    param($sender, $e)
+    param($src, $e)
 
     $job = $script:PrintJob
     $r = $job.receipt
@@ -282,11 +529,16 @@ if ($Setup) {
   $current = $config.printerName
   if (-not $current) { $current = $defaultPrinter }
 
+  $connected = Get-ConnectedUsbPorts
+  $ports = @{}
+  Get-CimInstance Win32_Printer | ForEach-Object { $ports[$_.Name] = $_.PortName }
+
   Write-Host ""
   Write-Host "Printers on this PC:" -ForegroundColor Cyan
   for ($i = 0; $i -lt $printers.Count; $i++) {
     $mark = ""
-    if ($printers[$i] -eq $current) { $mark = "   <- current" }
+    if ($connected -contains $ports[$printers[$i]]) { $mark += "   [USB CONNECTED]" }
+    if ($printers[$i] -eq $current) { $mark += "   <- current" }
     Write-Host ("  {0,2}. {1}{2}" -f ($i + 1), $printers[$i], $mark)
   }
   Write-Host ""
@@ -301,6 +553,16 @@ if ($Setup) {
   }
   $config.printerName = $current
   Write-Host "Receipts will print on: $current" -ForegroundColor Green
+
+  if (Test-ReceiptPrinter $current) {
+    if ($PaperWidth) {
+      $config.paperWidthMm = $PaperWidth
+    } elseif (-not $Quiet) {
+      $answer = Read-Host "Thermal paper width in mm, 58 or 80 (Enter = $($config.paperWidthMm))"
+      if ($answer -match "^(58|80)$") { $config.paperWidthMm = [int]$answer }
+    }
+    Write-Host "Thermal printer: $($config.paperWidthMm) mm paper, auto-cut after each receipt." -ForegroundColor Green
+  }
 
   if ($AdminPassword) {
     if ($AdminPassword.Length -lt 6) { Write-Host "Admin password must be at least 6 characters." -ForegroundColor Red; exit 1 }
