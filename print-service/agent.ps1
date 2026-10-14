@@ -87,7 +87,7 @@ function Save-Receipts($list) {
 
 function Get-IsoNow { (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ") }
 
-$ReceiptFields = @("receiptNo", "date", "customer", "inTime", "outTime", "fee", "feeText")
+$ReceiptFields = @("receiptNo", "date", "inTime", "outTime", "fee", "feeText")
 
 function Save-Receipt($data, [bool]$printed) {
   if (-not $data.receiptNo) { throw "receiptNo is required" }
@@ -347,7 +347,6 @@ function New-ReceiptBitmap($r, [int]$widthDots) {
   $y = & $row "Receipt No." $r.receiptNo $fontLabel $fontValue $rowGap
   $y = & $row "Date" $r.date $fontLabel $fontValue 0
   $y = & $divider
-  $y = & $row "Customer" $r.customer $fontLabel $fontValue $rowGap
   $y = & $row "In-Time" $r.inTime $fontLabel $fontValue $rowGap
   $y = & $row "Out-Time" $r.outTime $fontLabel $fontValue 0
   $y = & $divider
@@ -490,7 +489,6 @@ function Invoke-WindowsPrint($receipt, [string]$printerName, $config) {
     $y = & $row "Receipt No." $r.receiptNo $fontLabel $fontValue
     $y = & $row "Date" $r.date $fontLabel $fontValue
     $y = & $divider
-    $y = & $row "Customer" $r.customer $fontLabel $fontValue
     $y = & $row "In-Time" $r.inTime $fontLabel $fontValue
     $y = & $row "Out-Time" $r.outTime $fontLabel $fontValue
     $y = & $divider
@@ -597,7 +595,7 @@ if ($Setup) {
   if ($Quiet) { $test = "" } else { $test = Read-Host "Print a test receipt now? (y/N)" }
   if ($TestPrint -or $test -match "^[yY]") {
     $sample = [PSCustomObject]@{
-      receiptNo = "TEST-PRINT"; date = (Get-Date -Format "dd MMM yyyy"); customer = "Test"
+      receiptNo = "TEST-PRINT"; date = (Get-Date -Format "dd MMM yyyy")
       inTime = "08:00 AM"; outTime = "09:00 AM"; fee = 0; feeText = "0.00 ETB"
     }
     try {

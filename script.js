@@ -2,7 +2,6 @@
 const parkingForm = document.getElementById("parkingForm");
 const formSection = document.getElementById("formSection");
 const receiptSection = document.getElementById("receiptSection");
-const customerNameInput = document.getElementById("customerName");
 const feeInput = document.getElementById("fee");
 
 const printButton = document.getElementById("printButton");
@@ -79,10 +78,6 @@ function parseFeeInput(value) {
   return amount;
 }
 
-function isValidCustomerName(value) {
-  return /^[A-Za-z][A-Za-z\s.'-]*$/.test(value.trim());
-}
-
 function generateReceiptNumber() {
   const now = new Date();
   const datePart = [
@@ -97,10 +92,6 @@ function generateReceiptNumber() {
 }
 
 // ─── Input sanitisation ───────────────────────────────────────────────────────
-
-customerNameInput.addEventListener("input", function () {
-  this.value = this.value.replace(/[^A-Za-z\s.'-]/g, "");
-});
 
 feeInput.addEventListener("input", function () {
   const rawValue = this.value.replace(/[^0-9.]/g, "");
@@ -124,22 +115,13 @@ feeInput.addEventListener("input", function () {
 parkingForm.addEventListener("submit", function (event) {
   event.preventDefault();
 
-  const customerName = document
-    .getElementById("customerName")
-    .value.trim();
-
   const inTime = document.getElementById("inTime").value;
   const outTime = document.getElementById("outTime").value;
   const feeRaw = document.getElementById("fee").value;
   const fee = parseFeeInput(feeRaw);
 
-  if (!customerName || !inTime || !outTime || feeRaw === "") {
+  if (!inTime || !outTime || feeRaw === "") {
     alert("Please fill in all the required fields.");
-    return;
-  }
-
-  if (!isValidCustomerName(customerName)) {
-    alert("Customer name should contain letters only, without numbers.");
     return;
   }
 
@@ -157,7 +139,6 @@ parkingForm.addEventListener("submit", function (event) {
       month: "short",
       year: "numeric",
     }),
-    customer: customerName,
     inTime: formatTime(inTime),
     outTime: formatTime(outTime),
     fee,
@@ -166,7 +147,6 @@ parkingForm.addEventListener("submit", function (event) {
 
   document.getElementById("receiptNumber").textContent = currentReceipt.receiptNo;
   document.getElementById("receiptDate").textContent = currentReceipt.date;
-  document.getElementById("receiptCustomer").textContent = currentReceipt.customer;
   document.getElementById("receiptInTime").textContent = currentReceipt.inTime;
   document.getElementById("receiptOutTime").textContent = currentReceipt.outTime;
   document.getElementById("receiptFee").textContent = currentReceipt.feeText;
@@ -220,7 +200,6 @@ async function printWithTauriPlugin() {
     // 2. Read values already rendered on screen
     const receiptNo   = document.getElementById("receiptNumber").textContent;
     const receiptDate = document.getElementById("receiptDate").textContent;
-    const customer    = document.getElementById("receiptCustomer").textContent;
     const inTimeVal   = document.getElementById("receiptInTime").textContent;
     const outTimeVal  = document.getElementById("receiptOutTime").textContent;
     const feeVal      = document.getElementById("receiptFee").textContent;
@@ -237,7 +216,6 @@ async function printWithTauriPlugin() {
       text(`Date         ${receiptDate}`, { align: "left" }),
       line({ character: "-", length: 32 }),
 
-      text(`Customer     ${customer}`,   { align: "left" }),
       text(`In-Time      ${inTimeVal}`,  { align: "left" }),
       text(`Out-Time     ${outTimeVal}`, { align: "left" }),
       line({ character: "-", length: 32 }),
@@ -324,7 +302,7 @@ backButton.addEventListener("click", function () {
   receiptSection.classList.add("hidden");
   formSection.classList.remove("hidden");
 
-  document.getElementById("customerName").focus();
+  document.getElementById("inTime").focus();
 
   window.scrollTo({
     top: 0,
@@ -338,7 +316,7 @@ newReceiptButton.addEventListener("click", function () {
   receiptSection.classList.add("hidden");
   formSection.classList.remove("hidden");
 
-  document.getElementById("customerName").focus();
+  document.getElementById("inTime").focus();
 
   window.scrollTo({
     top: 0,
